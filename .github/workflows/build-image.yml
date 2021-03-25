@@ -1,0 +1,45 @@
+name: Publish Docker image
+on: push
+jobs:
+  push_to_registry:
+    name: Push Docker image to Docker Hub
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v2
+
+      - name: Prepare Dockerfile
+        run: envsubst < index.html | tee index.html
+
+      - name: Show me what you did
+        run: cat index.html
+
+      - name: Push to Docker Hub
+        uses: docker/build-push-action@v1
+        with:
+          username: nologin
+          password: ${{ secrets.DOCKER_PASSWORD }}
+          registry: rg.nl-ams.scw.cloud/image-brk-soft
+          push: true
+          tags: ${{ github.sha }}
+          build-args: |
+            GITHUB_SHA=${{ github.sha }}
+  deploy:
+    name: deploy to cluster
+    needs: push_to_registry
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@master
+
+    - name: prepare deploy
+      run: envsubst < deploy.yaml > deploy-sha.yaml
+
+    - name: show me what you did
+      run: cat deploy-sha.yaml
+
+    - name: deploy to cluster
+      uses: steebchen/kubectl@master
+      env:
+        KUBE_CONFIG_DATA: ${{ secrets.KUBE_CONFIG_DATA }}
+      with:
+        args: apply -f deploy-sha.yaml
